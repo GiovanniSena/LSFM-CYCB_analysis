@@ -16,7 +16,9 @@ from scipy import ndimage
 #warnings.filterwarnings('ignore')
 from skimage.morphology import erosion
 
-def detect(stack, local_acceptance=0.8,sig_range=[4,8]):
+DEFAULT_RANGE=[4,10]
+
+def detect(stack, local_acceptance=0.8,sig_range=DEFAULT_RANGE):
     sharpened = sharpen(stack)
     markers = blob_labels(sharpened,sig_range=sig_range)
     blobs = blob_centroids(markers,local_threshold=local_acceptance,sig_range=sig_range)
@@ -30,7 +32,7 @@ def sharpen(sample,exageration=1000,sig=8):
     partial[partial<acceptance] = 0
     return partial
 
-def blob_labels(partial,sig_range,resharpen=True):#[4,8]
+def blob_labels(partial,resharpen=True,sig_range=DEFAULT_RANGE):#[4,8]
     blobs=dog_blob_detect(partial, sigma_range=sig_range)
     if resharpen: blobs = sharpen(blobs)
     markers = label(blobs)[0]
@@ -41,7 +43,7 @@ def erode(im,count=3):
         im = erosion(im)
     return im / im.max()
 
-def blob_centroids(markers, sig_range, vol_threshold=100, local_threshold=0.8,
+def blob_centroids(markers, vol_threshold=100, local_threshold=0.8,sig_range=DEFAULT_RANGE,
                    should_plot=False,  use_countour_isolation=True, show_only_first_pass=False):
     centroids = []
     for P in regionprops(markers):
