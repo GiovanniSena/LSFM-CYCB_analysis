@@ -65,7 +65,8 @@ def process_files(n,save_to="./cached_data/all_blobs.txt", pardo=False):
         all_blobs.to_csv(save_to,index=None)
         return all_blobs
 
-def tracks_from_blobs(all_blobs,n,save_plot_loc=None,save_tracks_loc="./cached_data/augmented.txt"):#/"./sample_run6/p"+str(i)+".png"
+def tracks_from_blobs(all_blobs,n,save_plot_loc=None,black_list = [],
+                      save_tracks_loc="./cached_data/augmented.txt"):#/"./sample_run6/p"+str(i)+".png"
     blobs1 = all_blobs[all_blobs.t==0]
     augmented_info = []
     blobs1 = blobs1.reset_index().drop("index",1)
@@ -73,6 +74,7 @@ def tracks_from_blobs(all_blobs,n,save_plot_loc=None,save_tracks_loc="./cached_d
     known_key = blobs1.key.max()
     for i in range(n):   
         print(i)
+        if i in black_list:continue# skip this frame because it contains unusable data - do we need to think about t
         augmented_info.append(blobs1.copy())
         blobs2 = all_blobs[all_blobs.t==i]
         blobs2 = blobs2.reset_index().drop("index",1)

@@ -8,4 +8,5 @@ build
 dist
 logs
 data
+settings.json
 

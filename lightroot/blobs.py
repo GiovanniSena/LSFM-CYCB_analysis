@@ -11,17 +11,19 @@ from skimage import io
 from skimage import data, feature
 from skimage.draw import circle
 from scipy import ndimage
+from . import io
 
 #import warnings
 #warnings.filterwarnings('ignore')
 from skimage.morphology import erosion
 
 DEFAULT_RANGE=[4,10]
+DEFAULT_LOCAL_THRESHOLD = 0.7
 
-def detect(stack, local_acceptance=0.8,sig_range=DEFAULT_RANGE):
-    sharpened = sharpen(stack)
-    markers = blob_labels(sharpened,sig_range=sig_range)
-    blobs = blob_centroids(markers,local_threshold=local_acceptance,sig_range=sig_range)
+def detect(stack,sig_range=DEFAULT_RANGE):
+    stack = sharpen(stack)
+    stack = blob_labels(stack,sig_range=sig_range)
+    blobs = blob_centroids(stack)
     return blobs
 
 def sharpen(sample,exageration=1000,sig=8):
@@ -43,7 +45,27 @@ def erode(im,count=3):
         im = erosion(im)
     return im / im.max()
 
-def blob_centroids(markers, vol_threshold=100, local_threshold=0.8,sig_range=DEFAULT_RANGE,
+def blob_centroids(markers, display=False,watch=None):
+    centroids = []
+    ax= None if not display else io.plotimg(markers,colour_bar=False)
+    for p in _region.collection_from_markers(markers):
+        if watch!= None and p.key != watch:continue
+        if display: p.show(ax)
+        data = weight_by_distance_transform(p.image)
+        blobs = dog_blob_detect(data,sigma_range=DEFAULT_RANGE,threshold=DEFAULT_LOCAL_THRESHOLD)
+        sub_markers = label(blobs)[0]  
+        
+        if len(sub_markers) == 1:
+            centroids.append(p.coords)
+            continue
+        for p2 in _region.collection_from_markers(sub_markers, p):  
+            if display: p2.show(ax)
+            centroids.append(p2.coords)
+
+    return pd.DataFrame(centroids,columns = ['z','y','x', 's']).sort_values(["x", "y"])
+    
+    
+def blob_centroids_old(markers, vol_threshold=100, local_threshold=0.8,sig_range=DEFAULT_RANGE,
                    should_plot=False,  use_countour_isolation=True, show_only_first_pass=False):
     centroids = []
     for P in regionprops(markers):
@@ -78,6 +100,7 @@ def blob_centroids(markers, vol_threshold=100, local_threshold=0.8,sig_range=DEF
             #print(":>",offset_Crd)
             if should_plot: plotimg(p.image)
             if sub_vol > vol_threshold: centroids.append(offset_Crd)
+                
     return pd.DataFrame(centroids, columns = ['z','y','x', 's']).sort_values(["x", "y"])
 
 def dog_blob_detect(ci, sigma_range=[4,8], smoothing_sigma=5, threshold=0.01):
@@ -96,8 +119,6 @@ def contour_isolation(im):
     g = g/g.max()
     return g
 
-
-
 def sharpen_old(img,alpha = 1,thresh=0.2,gaus_sig=2):
     sharpened = img#.copy()
     sharpened[sharpened<thresh]=0 
@@ -107,3 +128,90 @@ def sharpen_old(img,alpha = 1,thresh=0.2,gaus_sig=2):
     sharpened = sharpened / sharpened.max()
     sharpened[sharpened<thresh]=0 #pre and post threshold - except we get more aggressive
     return sharpened
+
+def weight_by_distance_transform(img,param=22.5):
+    data =  ndimage.distance_transform_edt(img)
+    data = data + (22.5 * img) # blob intensity is more important
+    data = data / data.max()
+    return data
+
+
+colours = ["red", "green", "blue", "orange"]
+class _region:
+    
+    def __init__(self,r,pr=None,i=None):
+        self.r = r
+        self.pr = pr
+        self._key = i
+        self.level = 0
+        if self.pr != None:self.level = 1 + self.pr.level
+    
+    def show(self,ax):
+        #if self.volume < 100000:return
+        
+        minz, minr, minc, maxz, maxr, maxc = self.bbox
+        rect = mpatches.Rectangle((minc, minr), maxc - minc, maxr - minr, fill=False, edgecolor=colours[self.level], linewidth=2)
+        ax.add_patch(rect)
+        ax.annotate(str(self.key)+"("+ str(self.volume)+")", (minc, minr-10),  ha='center', va='top', size=10,color='orange')
+    
+    @property
+    def bbox(self):
+        bbox = np.array(self.r.bbox)
+        if self.pr != None:
+            offset = np.zeros(len(self.pr.bbox))
+            offset[:3] = self.pr.bbox[:3]#first coords
+            offset[3:] = self.pr.bbox[:3]#first coords          
+            bbox = bbox + offset            
+        return list(bbox)
+    
+    @property
+    def radius(self):
+        bb= self.r.bbox
+        return np.sqrt( (bb[3]-bb[0])**2+(bb[4]-bb[1])**2+(bb[5]-bb[2])**2)
+    
+    @property
+    def volume(self):
+        bb= self.r.bbox
+        return abs(bb[0]-bb[3])*abs(bb[1]-bb[4])*abs(bb[2]-bb[5])  
+    
+    @property
+    def coords(self):
+        bb= self.bbox
+        return [(bb[3]+bb[0])/2,(bb[4]+bb[1])/2,(bb[5]+bb[2])/2, self.radius]
+    
+    @property
+    def image_stats(self):
+        pass    
+
+    @property
+    def image(self):
+        img= self.r.image.copy()
+        img = img / img.max()
+        return img
+    
+    @property
+    def avg(self):
+        return round(self.r.image.mean(),2)
+    
+    @property
+    def sum(self):
+        return round(self.r.image.sum(),2)
+    
+    @property
+    def key(self):
+        return self._key
+    
+    def __repr__(self):
+        return str(self.coords)
+    
+    @staticmethod
+    def collection_from_markers(markers,parent_region=None,having_min_vol=200):
+        l = []
+        for i, region in enumerate(regionprops(markers)):
+            if len(region.bbox) >=6:#validate for volume data - could chnage this to a param
+                r = _region(region, parent_region,i)
+                if r.volume > having_min_vol:
+                    l.append(r)
+        return l
+    
+        
