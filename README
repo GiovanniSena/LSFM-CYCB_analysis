@@ -1,6 +1,7 @@
 lightroot is a small project for tracking cells in growing root tips.
-
+*********************************************************************
 The current version expects a settings.json file in root location of the program.
 This file should provide a path or search template for both 3D sacks and max intensity images. 
 In future more options will be added but now we favour simiplicity.
+
 
