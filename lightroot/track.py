@@ -1,19 +1,18 @@
-#
 import pandas as pd
 import numpy as np
 from scipy.spatial import KDTree as scKDTree
-import hdbscan
 
 #things that are outside a giant cluster that is significant 
 #things that are only just spotted and yet to be explained by the transformation
 #check second and third order transitins for robustness i.e. robustness against dropped cells
 
 def apply_cluster_id_over_time(df):
-	for k,g in df.groupby("t"):
-		#cluster
-		g["cluster"] = None
-	#mark giant cluster if exists and is larger than threshold - we can then optionally filter things that are not in it later
-	return df
+    import hdbscan
+    for k,g in df.groupby("t"):
+        #cluster
+        g["cluster"] = None
+    #mark giant cluster if exists and is larger than threshold - we can then optionally filter things that are not in it later
+    return df
 
 def propose_displacements_2d(b1,b2):
     disps = []
