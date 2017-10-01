@@ -14,6 +14,8 @@ class _SETTINGS(dict):
         
 SETTINGS = _SETTINGS()
 
+if not os.path.exists("./cached_data/"): os.makedirs("./cached_data/")
+    
 if not os.path.exists("./settings.json"):
     #create it with defaults
     #print("no settings file, using defaults")
@@ -60,7 +62,7 @@ def process_files(n,save_to="./cached_data/all_blobs.txt", pardo=False):
             bl["t"] = i
             all_blobs.append(bl)
         all_blobs = pd.concat(all_blobs)
-        all_blobs.to_csv(save_to)
+        all_blobs.to_csv(save_to,index=None)
         return all_blobs
 
 def tracks_from_blobs(all_blobs,n,save_plot_loc=None,save_tracks_loc="./cached_data/augmented.txt"):#/"./sample_run6/p"+str(i)+".png"
@@ -69,12 +71,16 @@ def tracks_from_blobs(all_blobs,n,save_plot_loc=None,save_tracks_loc="./cached_d
     blobs1 = blobs1.reset_index().drop("index",1)
     blobs1["key"] = blobs1.index #seed keys with the index (after we auto-increment keys for new cells)
     known_key = blobs1.key.max()
-    for i in range(n):    
+    for i in range(n):   
+        print(i)
         augmented_info.append(blobs1.copy())
         blobs2 = all_blobs[all_blobs.t==i]
         blobs2 = blobs2.reset_index().drop("index",1)
+        if save_plot_loc != None:
+            ax = io.plotimg(io.get_max_int(i), colour_bar=False)
+            plt.scatter(x=blobs1.x, y=blobs1.y, c='r', s=10)
         try:
-            blobs1,known_key = get_pairing(blobs1,blobs2,known_key)
+            blobs1,known_key = track.get_pairing(blobs1,blobs2,known_key)
             if save_plot_loc != None:
                 plt.scatter(x=blobs1.x, y=blobs1.y, c='g', s=30)
                 for k,r in blobs1.iterrows(): plt.annotate(str(int(r["key"])), (r["x"],r["y"]+5),  ha='center', va='top', size=14)
@@ -84,6 +90,6 @@ def tracks_from_blobs(all_blobs,n,save_plot_loc=None,save_tracks_loc="./cached_d
             pass   
         plt.close()
     df=pd.concat(augmented_info)
-    df.to_csv(save_tracks_loc)
+    df.to_csv(save_tracks_loc,index=None)
     return df
 
