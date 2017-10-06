@@ -86,7 +86,7 @@ def tracks_from_blobs(all_blobs,n,save_plot_loc=None,black_list = [],
             if save_plot_loc != None:
                 plt.scatter(x=blobs1.x, y=blobs1.y, c='g', s=30)
                 for k,r in blobs1.iterrows(): plt.annotate(str(int(r["key"])), (r["x"],r["y"]+5),  ha='center', va='top', size=14)
-            plt.savefig(save_plot_loc.format(i))
+                plt.savefig(save_plot_loc.format(i))
         except Exception as ex:  
             print(repr(ex))
             pass   
