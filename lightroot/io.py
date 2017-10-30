@@ -10,7 +10,7 @@ def get_max_int(i, formatof=None, norm=True):
     #todo - if there are no max int files make them using the stack or return none
     if formatof == None: formatof = SETTINGS["maxint_files"]
     file = formatof.format(i)
-    im = io.imread(file)[300:900,:]
+    im = io.imread(file)#[300:900,:]
   
     return im
 
@@ -18,7 +18,7 @@ def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
     if formatof == None: formatof= SETTINGS["stack_files"]
     file = formatof.format(i)
     im = io.imread(file)    
-    if convert_and_clip==True: im = im.astype(int)[:,300:900,:] #convert and clip  hard code for now
+    if convert_and_clip==True: im = im.astype(int)#[:,300:900,:] #convert and clip  hard code for now
     if norm: im = im / im.max()
     if norm: im = im / im.max()
     return im
