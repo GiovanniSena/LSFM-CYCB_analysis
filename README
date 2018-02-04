@@ -1,5 +1,5 @@
 lightroot is a small project for tracking cells in growing root tips.
 *********************************************************************
-To use either run the sample notebook interactively or use the command python run.py [data folder]
+To use with your data either run the sample notebook or use the command python run.py [data folder]
 
 
