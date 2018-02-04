@@ -104,7 +104,6 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
         
     io.log("Processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
 
-    
     tracks = []
     blobs_last = None
     known_key = None
@@ -204,6 +203,4 @@ def tracks_from_blobs(all_blobs,n,save_plot_loc=None,black_list = [],
     df.to_csv(save_tracks_loc,index=None)
     return df
 
-
-
-io.log("Loaded lightroot")
+io.log("loaded lightroot")
