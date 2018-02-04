@@ -95,7 +95,7 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     
     path = "./cached_data/"
     if os.listdir(path) != []: 
-        if  input("The directory "+path+" should be empty. Do you want to clear it? (y/n)") == "y":
+        if  input("The directory "+path+" should be empty. Do you want to clear it? (y/n)").lower() == "y":
             for i in glob(path+"*.*"): os.remove(i)
     
     if log_to_file: 
@@ -103,6 +103,7 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
         using_tqdm = True
         
     io.log("Processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
+
     
     tracks = []
     blobs_last = None
