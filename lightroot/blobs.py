@@ -26,11 +26,13 @@ DEFAULT_THINNING_THRESHOLD = 0.3
 #LOW_BAND_RANGE = [0.05,0.085]
 
 def crop_by_region(data, region):
+    """Given a region e.g something from a set of label, mask data using the index determined by the region"""
     if data is None: return None
     z1,y1,x1, z2,y2,x2 = region.bbox[0],region.bbox[1],region.bbox[2],region.bbox[3],region.bbox[4],region.bbox[5]
     return data[z1:z2, y1:y2,x1:x2]
 
 def extract_largest_label(stack_sample,binary,  retain_size=False, out=[]):
+    """Of all binary labels in the binary layer, find the largest one by volume and then crop the primary image using the largest label as a mask"""
     sub_markers = label(binary)[0]
     largest=0
     lab = 0
@@ -51,6 +53,7 @@ def extract_largest_label(stack_sample,binary,  retain_size=False, out=[]):
     return crop_by_region(output, PP)
 
 def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=0.3):
+    """Runs a composite recipe for isolating and clipping a root region"""
     if low_band_range is None:
         low_band_range = [round(p,3) for p in np.percentile(stack, [95, 99,99])]
         #low_band_range= perc[0:2]
@@ -67,7 +70,7 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     stack_sample=gaussian_filter(stack_sample,sigma=8) # merge anything corroded due to filter or any small gaps in the mask
     
     perc_non_zero = len(np.nonzero(stack_sample)[0])/np.prod(stack_sample.shape)
-    log("check if we need otsu... Percentage non zero is {0:.2f}% and we use if greater than 50%".format(round(perc_non_zero*100, 2)))
+    log("check if we need otsu... Percentage non-zero is {0:.2f}% and we use if greater than 50%".format(round(perc_non_zero*100, 2)))
     thresh = threshold_otsu(stack_sample) if perc_non_zero > .50 else low_band_range[0]
     el = extract_largest_label(stack, stack_sample > thresh,retain_size,out)
     
@@ -88,10 +91,11 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     return el
 
 def detect(stack,cut_with_low_pass=True,sharpen_iter=2, isolate_iter=2,  isol_threshold=0.125, display_detections=False):
+    """high level function to carry out a detection recipe"""
     out = []
     if cut_with_low_pass: 
         stack = low_pass_root_segmentation(stack, out=out)
-        log("clipped root, offset at {} using pi times low_band upper".format(out))
+        log("clipped root, offset at {}".format(out))
     stack = sharpen(stack, iterations=sharpen_iter)
     overlay = stack.sum(axis=0)
     stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
@@ -113,7 +117,7 @@ def sharpen(sample,exageration=1000,sig=8, iterations=1):
 
 def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, iterations=1):#thing about threshold - should be adaptive
     perc_non_zero = len(np.nonzero(partial)[0])/np.prod(partial.shape)
-    log("sharpening done. percentage non zero is {0:.2f}%".format(round(perc_non_zero*100, 2)))
+    log("sharpening done. percentage non-zero is {0:.2f}%".format(round(perc_non_zero*100, 2)))
 
     if perc_non_zero > 0.5:
         log("non-zero exceeds 50%, recommend dropping frame as root cannot be isolated. Probably no cells either")
@@ -131,6 +135,12 @@ def erode(im,count=3):
     for i in range(count):   im = erosion(im)
     return im / im.max()
 
+def weight_by_distance_transform(img,param=22.5):
+    data =  ndimage.distance_transform_edt(img)
+    data = data + (22.5 * img) # blob intensity is more important
+    data = data / data.max()
+    return data
+
 def blob_centroids(blobs, 
                    display=False,
                    watch=None, 
@@ -142,6 +152,7 @@ def blob_centroids(blobs,
                    skip_large_regions=False,
                    root_offset= []):
     
+    """Using a hierarchical decomposition, find blobs"""
     markers = label(blobs)[0]
     centroids = []
     ax= None if not display else io.plotimg(markers,colour_bar=False)
@@ -151,7 +162,7 @@ def blob_centroids(blobs,
         if display: p.show(ax)
            
         if p.volume > 200000 and skip_large_regions:
-            log("Skipping excessive volume blob range - volume is {}".format(p.volume))
+            log("skipping excessive volume blob range - volume is {}".format(p.volume))
             continue
         data = weight_by_distance_transform(p.image) if dt else p.image
         blobs = dog_blob_detect(data,sigma_range=DEFAULT_RANGE,threshold=DEFAULT_LOCAL_THRESHOLD)
@@ -191,14 +202,16 @@ def blob_centroids(blobs,
 
 
 def dog_blob_detect(ci, sigma_range=[1,2], smoothing_sigma=7, threshold=0.2, iterations=1):
+    """emphasise blobs via a differnece of gaussians and a lowerbound threshold. can be run iteratively"""
     g2 = gaussian_filter(ci,sigma=sigma_range[0]) - gaussian_filter(ci,sigma=sigma_range[1])
     g2=gaussian_filter(g2,sigma=smoothing_sigma)
     g2 = g2/g2.max() 
     g2[g2<threshold] = 0
     if iterations > 1: return dog_blob_detect(g2, sigma_range, smoothing_sigma, threshold, iterations-1)
     return g2
-    
+ 
 def contour_isolation(im):
+    """deprecated"""
     partial_lap = ndimage.laplace(im)
     partial_lap = im - partial_lap
     partial_lap = partial_lap / partial_lap.max()
@@ -207,7 +220,9 @@ def contour_isolation(im):
     g = g/g.max()
     return g
 
+
 def sharpen_old(img,alpha = 1,thresh=0.2,gaus_sig=2):
+    """deprecated"""
     sharpened = img#.copy()
     sharpened[sharpened<thresh]=0 
     blurred_f = gaussian_filter(sharpened, gaus_sig)
@@ -217,16 +232,9 @@ def sharpen_old(img,alpha = 1,thresh=0.2,gaus_sig=2):
     sharpened[sharpened<thresh]=0 #pre and post threshold - except we get more aggressive
     return sharpened
 
-def weight_by_distance_transform(img,param=22.5):
-    data =  ndimage.distance_transform_edt(img)
-    data = data + (22.5 * img) # blob intensity is more important
-    data = data / data.max()
-    return data
-
-
 colours = ["red", "green", "blue", "orange"]
 class _region:
-    
+    """wrapper class for labelled regions to get some hand properties"""
     def __init__(self,r,pr=None,i=None,raw_data=None):
         self.r = r
         self.pr = pr

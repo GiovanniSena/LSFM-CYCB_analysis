@@ -4,19 +4,24 @@ from setuptools import setup, find_packages
 
 setup(
     name='lightroot',
-    version='0.1',
+    version='0.9',
     author='Sirsh',
     author_email='amartey@gmail.com',
     license='MIT',
-    url='git@github.com:landaconsultants/geodomus.git',
+    url='git@gitlab.com/Amarteifio/lightroot',
     keywords='root microscopy tracking',
     description='lighroot description',
     long_description=('lightroot description'),
-    packages=['lightroot'],
+    packages=find_packages(),
     test_suite='nose.collector',
     tests_require=['nose'],
+    entry_points={
+        'console_scripts': [
+            'lightroot = lightroot.__main__:main'
+            ],
+    },
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: Beta',
         'Intended Audience :: Developers',
         'License :: MIT',
         'Operating System :: OS Independent',

@@ -11,7 +11,8 @@ ascii_art = """
 |____/__\___  /|___|  /__|  |__|   \____/ \____/|__|     
        /_____/      \/                                \n\n"""
 
-if __name__ == "__main__":
+def main(args=None):
+
     l= len(sys.argv)
     print(ascii_art)
     if l >1:  
@@ -20,4 +21,6 @@ if __name__ == "__main__":
     else:
         print("Please specify a folder to process")
     
-    
+
+if __name__ == "__main__":
+    main()    

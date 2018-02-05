@@ -7,6 +7,7 @@ from . import SETTINGS
 import time
 
 def log(message,index="", mtype="INFO"): 
+    """Log to console or file"""
     index = "" if "current_frame_index" not in SETTINGS else "({})".format(SETTINGS["current_frame_index"])
     
     to_file = False if "log_to_file" not in SETTINGS else SETTINGS["log_to_file"]
@@ -18,6 +19,7 @@ def log(message,index="", mtype="INFO"):
     else:  print(record)
     
 def get_max_int(i, formatof=None, norm=True):
+    """Having set a folder template, load the max intensity frame by index from that folder"""
     #todo - if there are no max int files make them using the stack or return none
     if formatof == None: formatof = SETTINGS["maxint_files"]
     file = formatof.format(i)
@@ -25,7 +27,25 @@ def get_max_int(i, formatof=None, norm=True):
   
     return im
 
+def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
+    """Having set a folder template, load the 3d stack frame by index from that folder"""
+    SETTINGS["current_frame_index"] = i
+    
+    if formatof == None: formatof= SETTINGS["stack_files"]
+    file = formatof.format(i)
+    im = io.imread(file)    
+    if convert_and_clip==True: im = im.astype(int)#[:,300:900,:] #convert and clip  hard code for now
+    if norm: im = im / im.max()
+    if norm: im = im / im.max()
+        
+    log("Stack loaded from "+file)
+        
+    return im
+
+
 def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
+    """Dump out some statistics for the image"""
+    
     import scipy
    
     hist, bin_edges = np.histogram(im, bins=100,normed=normed_hist)
@@ -49,22 +69,9 @@ def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
             "95_99Percentiles" : np.percentile(stack_sample, [95, 99])
             }
 
-def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
-    SETTINGS["current_frame_index"] = i
-    
-    
-    if formatof == None: formatof= SETTINGS["stack_files"]
-    file = formatof.format(i)
-    im = io.imread(file)    
-    if convert_and_clip==True: im = im.astype(int)#[:,300:900,:] #convert and clip  hard code for now
-    if norm: im = im / im.max()
-    if norm: im = im / im.max()
-        
-    log("Stack loaded from "+file)
-        
-    return im
 
 def plotimg(im,default_slice=None,show_intensity=False,colour_bar=True):
+    """Plot the image. If 3D plot the projection onto 3d by sunmming on axis 0"""
     if len(im.shape) == 3:#take a particular slice or max intensity
         plt.figure(figsize=(12,2))
         if show_intensity:plt.plot(im.sum(axis=1).sum(axis=1)/(np.array(im.shape[1:]).sum()))
@@ -78,15 +85,18 @@ def plotimg(im,default_slice=None,show_intensity=False,colour_bar=True):
     #if colour_bar:fig.colorbar(ax)
     return ax
     
+    
+def overlay_blobs(image, blobs):
+    """scatter blobs from a dataframe t,x,y,z over the image"""
+    ax = plotimg(image)
+    plt.scatter(x=blobs.x, y=blobs.y, c='white', s=30)
+    
 def plot_blobs_at_t(df,t):
     maxin_sample = get_max_int(t)
     if maxin_sample == None: maxin_sample = get_stack(t)
     blobs=df[df.t==t]
     ax = plotimg(maxin_sample)
     plt.scatter(x=blobs.x, y=blobs.y, c='g', s=30)
-    
-def overlay_blobs(image, blobs):
-    ax = plotimg(image)
-    plt.scatter(x=blobs.x, y=blobs.y, c='white', s=30)
+
     
     

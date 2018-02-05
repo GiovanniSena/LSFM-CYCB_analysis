@@ -48,6 +48,7 @@ with open("./settings.json") as _f:
 from . import blobs
 from . import io
 from . import track
+from . import lineage
 
 
 #################
@@ -94,15 +95,17 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     count = limit_count if limit_count != None else determine_file_count(SETTINGS["stack_files"])
     
     path = "./cached_data/"
+    chp_file = "./cached_data/tracked_blobs.cpt"
+    
     if os.listdir(path) != []: 
         if  input("The directory "+path+" should be empty. Do you want to clear it? (y/n)").lower() == "y":
             for i in glob(path+"*.*"): os.remove(i)
     
     if log_to_file: 
-        print("Running lightroot. See log in cache_output for details...\n")
+        print("\nRunning lightroot. See log in cache_output for details...\n")
         using_tqdm = True
         
-    io.log("Processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
+    io.log("processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
 
     tracks = []
     blobs_last = None
@@ -126,18 +129,26 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
                 plt.scatter(x=blobs_last.x, y=blobs_last.y, c='r', s=30)
                 blobs_last,known_key = track.get_pairing(blobs_last,current_blobs,known_key)
                 tracks.append(blobs_last.copy())
-                pd.concat(tracks).drop("index",1).set_index("t").to_csv("./cached_data/tracked_blobs.cpt")
+                pd.concat(tracks).drop("index",1).set_index("t").to_csv(chp_file)
                 for k,r in blobs_last.iterrows(): plt.annotate(str(int(r["key"])), (r["x"],r["y"]+5),  ha='center', va='top', size=14)
             except Exception as ex:  
                 io.log(repr(ex),mtype="ERROR")
 
         plt.savefig(save_plot_loc.format(i))
         plt.close()
+        
     io.log("writing final tracks")
     
-    pd.concat(tracks).drop("index",1).set_index("t").to_csv("./cached_data/tracked_blobs.csv")
-    os.remove("./cached_data/tracked_blobs.cpt")
-    io.log("Done.")
+    blob_file = "./cached_data/tracked_blobs.csv"
+    with open(blob_file, 'a') as f:
+        f.write('# Data from location {}\n'.format(SETTINGS["stack_files"]))
+        if len(tracks) > 0: pd.concat(tracks).drop("index",1).set_index("t").to_csv(f)
+        
+    io.log("writing life matrix")
+    lineage.blobs_to_life_matrix(blob_file)
+    
+    if os.path.isfile(chp_file): os.remove(chp_file)
+    io.log("done.")
 
 ################
 ####Sec
