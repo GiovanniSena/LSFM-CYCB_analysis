@@ -1,6 +1,7 @@
 import json
 import os
 import pandas as pd
+
 from matplotlib import pyplot as plt#currently use pyplot to overload the image and blobs - will change
 from datetime import datetime
 import time
@@ -63,12 +64,15 @@ def determine_file_count(format_path, nmax_files=100000):
         
 def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", token="_tp"):
     try:
-        io.log("inferring file formats...")
+           
         from glob import glob
         from os.path import basename
         import os
         from lightroot import SETTINGS #or .
-        f0 = glob(path_to_exp+"/*.tif")[-1]
+        path_to_exp = path_to_exp.replace("\\", "/").replace("\"", "")
+        search = path_to_exp+"/*.tif"
+        print("searching",search )
+        f0 = glob(search)[-1]
         f = basename(f0).split(".")[0]
         prefix = f[:f.index(token)+len(token)]
         stack_f = os.path.join(path_to_exp, prefix+ "{:0>3}.tif")
@@ -81,19 +85,21 @@ def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", 
         return stack_f, maxint_f
              
     except Exception as ex:
-        print (ex)
-        print("Hence we are unable to infer file formats from the default cenvention.")
+        print (ex, "- hence we are unable to infer file formats from the default cenvention.")
         print("You will need to enter the formats manually.")
         print("Either reconfigure convention or supply format for stack & max intensity files using the settings.json example.")
+        raise ex
         
         
 def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     save_plot_loc = "./cached_data/{}.png"
     SETTINGS["log_to_file"] = log_to_file
-    if infer_file_formats: 
-        infer_formats(folder)
-    count = limit_count if limit_count != None else determine_file_count(SETTINGS["stack_files"])
-    
+    if infer_file_formats==True: 
+        try:  infer_formats(folder)
+        except: 
+            print("FATAL ERROR: Unable to determine file formats - check that you have used a valid path")
+            return
+            
     path = "./cached_data/"
     chp_file = "./cached_data/tracked_blobs.cpt"
     
@@ -105,6 +111,7 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
         print("\nRunning lightroot. See log in cache_output for details...\n")
         using_tqdm = True
         
+    count = limit_count if limit_count != None else determine_file_count(SETTINGS["stack_files"])
     io.log("processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
 
     tracks = []

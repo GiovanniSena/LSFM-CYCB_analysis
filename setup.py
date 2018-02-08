@@ -37,3 +37,7 @@ setup(
 )
 
 
+#todo clean istall on windows added pyfftw with https://www.lfd.uci.edu/~gohlke/pythonlibs/ wheel for sys
+#normally pip install pyfftw should work
+#i have also install some tools for PC from https://github.com/alimuldal/phasepack
+#also using tqdm

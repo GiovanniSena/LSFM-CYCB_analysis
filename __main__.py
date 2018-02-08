@@ -12,7 +12,6 @@ ascii_art = """
        /_____/      \/                                \n\n"""
 
 def main(args=None):
-
     l= len(sys.argv)
     print(ascii_art)
     if l >1:  

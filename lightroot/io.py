@@ -70,7 +70,7 @@ def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
             }
 
 
-def plotimg(im,default_slice=None,show_intensity=False,colour_bar=True):
+def plotimg(im,default_slice=None,show_intensity=False,colour_bar=False):
     """Plot the image. If 3D plot the projection onto 3d by sunmming on axis 0"""
     if len(im.shape) == 3:#take a particular slice or max intensity
         plt.figure(figsize=(12,2))
@@ -78,10 +78,11 @@ def plotimg(im,default_slice=None,show_intensity=False,colour_bar=True):
         im= im.sum(axis=0) if default_slice == None else im[default_slice,:]
     #fig = plt.figure(figsize=(20,10))
     #ax= plt.imshow(im,)
-    #if colour_bar:fig.colorbar(ax)
+    
     #return ax
     fig,ax = plt.subplots(1,figsize=(20,10))
     ax.imshow(im)
+    #if colour_bar:fig.colorbar(ax)
     #if colour_bar:fig.colorbar(ax)
     return ax
     
@@ -98,5 +99,41 @@ def plot_blobs_at_t(df,t):
     ax = plotimg(maxin_sample)
     plt.scatter(x=blobs.x, y=blobs.y, c='g', s=30)
 
+def tile(s,x,y,divs=4):
+    if x >= divs or y >= divs: raise Exception("out of range on tile request")
+    if len(s.shape) > 2: s = s.sum(axis=0)
+    L = (np.array(s.shape)/divs).astype(int)
+    x1,x2 = x*L[1],x*L[1]+L[1]   
+    y1,y2 = y*L[0],y*L[0]+L[0] 
+    if x+1 == divs: x2=-1
+    if y+1 == divs: y2=-1
+    return s[y1:y2,x1:x2 ]
+
+
+def tile_function_plot(data, func, divs=10):
+    f, axarr = plt.subplots(divs,divs,figsize=(15,11.5))
+    plt.axis('on')#
     
+    for x in range(divs):
+        for y in range(divs):
+            tile1 = tile(data,x,y,divs=divs)
     
+            AX = axarr[y,x]
+            AX.set_xticklabels([])
+            AX.set_yticklabels([])
+            
+            try:
+                tile1, text = func(tile1)
+                
+                #counts = dict(zip(*np.histogram(res[1].flatten())))
+                #angle = counts[np.array(list(counts.keys())).max() ]
+                #keys = sorted(list(counts.keys()))
+                #top_keys = "{},{}".format(int(counts[keys[-2]]),int(counts[keys[-1]]))
+                
+                AX.imshow(tile1,'Spectral')    
+                AX.text(20, 50, text, color='white', fontsize=14)
+            except:
+                continue
+                
+    plt.subplots_adjust(wspace=0, hspace=0)
+

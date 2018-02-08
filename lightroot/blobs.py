@@ -15,6 +15,12 @@ from . import io
 import matplotlib.patches as mpatches
 
 from . io import log
+try:
+    import phasepack
+except:
+    log("Could not load phasepack which is required for some features. Check that it is installed", mtype="WARN")
+    pass
+
 #import warnings
 #warnings.filterwarnings('ignore')
 from skimage.morphology import erosion
@@ -28,11 +34,16 @@ DEFAULT_THINNING_THRESHOLD = 0.3
 def crop_by_region(data, region):
     """Given a region e.g something from a set of label, mask data using the index determined by the region"""
     if data is None: return None
-    z1,y1,x1, z2,y2,x2 = region.bbox[0],region.bbox[1],region.bbox[2],region.bbox[3],region.bbox[4],region.bbox[5]
-    return data[z1:z2, y1:y2,x1:x2]
+    if len(region.bbox) == 6:
+        z1,y1,x1, z2,y2,x2 = region.bbox[0],region.bbox[1],region.bbox[2],region.bbox[3],region.bbox[4],region.bbox[5]
+        return data[z1:z2, y1:y2,x1:x2]
+    else:# im assuming data is always 3d but i could put in more cases
+        y1,x1, y2,x2 = region.bbox[0],region.bbox[1],region.bbox[2],region.bbox[3]
+        return data[:, y1:y2,x1:x2]
 
-def extract_largest_label(stack_sample,binary,  retain_size=False, out=[]):
+def extract_largest_label(stack_sample,binary,  retain_size=False, out=[], clipIn2d=True):
     """Of all binary labels in the binary layer, find the largest one by volume and then crop the primary image using the largest label as a mask"""
+   
     sub_markers = label(binary)[0]
     largest=0
     lab = 0
@@ -45,20 +56,54 @@ def extract_largest_label(stack_sample,binary,  retain_size=False, out=[]):
             PP = p
     
     out.append(PP.bbox)
-    #create a new image
+
     output = np.zeros_like(stack_sample)
-    output[sub_markers==lab] = stack_sample[sub_markers==lab]
+    mask = sub_markers==lab
+    
+    if len(mask.shape) == 2 and len(output.shape)==3: 
+        log("projecting 2d mask to 3d mask...")
+        mask = np.tile(mask,(output.shape[0],1,1))
+       
+    #print(mask.shape,output.shape, stack_sample.shape)
+    output[mask] = stack_sample[mask]
+    
     if retain_size: return output
     #clip the part of the output that is fitting the bounding box
     return crop_by_region(output, PP)
 
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=0.35):
+    """Runs a composite recipe for isolating and clipping a root region"""
+    stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
+    low_band_range = [round(p,3) for p in np.percentile(stack_sample, [95, 99,99])]
+    stack_sample[stack_sample>low_band_range[1]]=low_band_range[1]
+    stack_sample[stack_sample<low_band_range[0]]=0
+    perc_non_zero = len(np.nonzero(stack_sample)[0])/np.prod(stack_sample.shape)
+    stack_sample=gaussian_filter(stack_sample,sigma=8)
+    el = extract_largest_label(stack, stack_sample > 0.01,clipIn2d=True,out=out)
+    
+    el /= el.max()
+    
+    shine = len(np.nonzero(el[el>final_filter])[0])
+    #reduce shine
+    log("checking shine @ {0:.2f}".format(shine))
+    if shine > 25000:#considered to be too bright - purely heuristic for now
+        log("bright frame detected. removing bottom", mtype="WARN")
+        el[el<final_filter]=0 
+        el/= el.max()
+        
+    perc_non_zero = len(np.nonzero(el)[0])/np.prod(el.shape)
+    log("extracted root region with volume {0} with non-zero {1:.2f}%".format(np.prod(el.shape),round(perc_non_zero*100, 2)))
+    
+    return el
+    
+    
 def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=0.3):
     """Runs a composite recipe for isolating and clipping a root region"""
     if low_band_range is None:
         low_band_range = [round(p,3) for p in np.percentile(stack, [95, 99,99])]
         #low_band_range= perc[0:2]
         log("using low band range from 95,98,99 data percentile {}".format(low_band_range))
-    stack_sample = stack.copy()#copy is importany because we are creating a mask
+    stack_sample = stack.copy() 
     stack_sample[stack_sample>low_band_range[1]]=low_band_range[1]
     stack_sample[stack_sample<low_band_range[0]]=0
     perc_non_zero = len(np.nonzero(stack_sample)[0])/np.prod(stack_sample.shape)
@@ -72,6 +117,7 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     perc_non_zero = len(np.nonzero(stack_sample)[0])/np.prod(stack_sample.shape)
     log("check if we need otsu... Percentage non-zero is {0:.2f}% and we use if greater than 50%".format(round(perc_non_zero*100, 2)))
     thresh = threshold_otsu(stack_sample) if perc_non_zero > .50 else low_band_range[0]
+
     el = extract_largest_label(stack, stack_sample > thresh,retain_size,out)
     
     el[el<low_band_range[1]]=0 #not essential but suggests that it is the low band
@@ -90,11 +136,11 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     
     return el
 
-def detect(stack,cut_with_low_pass=True,sharpen_iter=2, isolate_iter=2,  isol_threshold=0.125, display_detections=False):
+def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False):
     """high level function to carry out a detection recipe"""
     out = []
     if cut_with_low_pass: 
-        stack = low_pass_root_segmentation(stack, out=out)
+        stack = low_pass_2d_proj_root_segmentation(stack, out=out)
         log("clipped root, offset at {}".format(out))
     stack = sharpen(stack, iterations=sharpen_iter)
     overlay = stack.sum(axis=0)
@@ -127,7 +173,9 @@ def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, it
         partial[partial<threshold] = 0 # this threshold is coupled to the one we used for hierarchical blobbing
         partial = partial/partial.max() 
             
+    
     blobs=dog_blob_detect(partial, sigma_range=sig_range, threshold=threshold, iterations=iterations)
+    partial = ndimage.filters.sobel(partial)
 
     return blobs
     
@@ -193,7 +241,7 @@ def blob_centroids(blobs,
             centroids.append(p2.coords)
         
         if not found:##ading the big one because we found nothing - although, i need to condition - if the area is not rediculous
-            #print("adding big region because no little region found")
+            #("adding big region because no little region found")
             centroids.append(p.coords)
         
     log("Found {} centroids".format(len(centroids)))
@@ -231,6 +279,23 @@ def sharpen_old(img,alpha = 1,thresh=0.2,gaus_sig=2):
     sharpened = sharpened / sharpened.max()
     sharpened[sharpened<thresh]=0 #pre and post threshold - except we get more aggressive
     return sharpened
+
+
+def root_finger_print(stack):
+    low_band_range = [round(p,3) for p in np.percentile(stack, [55  , 99])]
+    print(low_band_range)
+    stack_sample = stack.copy()#copy is importany because we are creating a mask
+    stack_sample[stack_sample>low_band_range[1]]=low_band_range[1]
+    stack_sample[stack_sample<low_band_range[0]]=0
+    stack_sample=gaussian_filter(stack_sample,sigma=20)
+    lightroot.io.plotimg(stack_sample)
+    stack_sample[stack_sample < low_band_range[0]] = 0
+    lightroot.io.plotimg(stack_sample)
+    stack_sample = ndimage.sobel(stack_sample)
+    edges = feature.canny(stack_sample.sum(axis=0))
+    lightroot.io.plotimg(edges*1000)
+    lightroot.io.plotimg(stack_sample)
+    
 
 colours = ["red", "green", "blue", "orange"]
 class _region:
