@@ -54,8 +54,8 @@ def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
     plt.figure(figsize=(20,10))
     plt.subplot(131)
     #todo find sensible limits
-    plt.xlim(*xlim)
-    plt.ylim(*ylim)
+    if ylim != None: plt.xlim(*xlim)
+    if xlim != None: plt.ylim(*ylim)
     plt.plot(bin_centers, hist, lw=2)
     stack_sample = np.nonzero(im)[0]
 

@@ -71,10 +71,12 @@ def extract_largest_label(stack_sample,binary,  retain_size=False, out=[], clipI
     #clip the part of the output that is fitting the bounding box
     return crop_by_region(output, PP)
 
-def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=0.35):
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1):
     """Runs a composite recipe for isolating and clipping a root region"""
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
-    low_band_range = [round(p,3) for p in np.percentile(stack_sample, [95, 99,99])]
+    stack_sample /= stack_sample.max()
+    low_band_range = [round(p,3) for p in np.percentile(stack_sample, [95, 99, 50])]
+    log("using low band range for 2d data from 95,99, 50 data percentile {}".format(low_band_range))
     stack_sample[stack_sample>low_band_range[1]]=low_band_range[1]
     stack_sample[stack_sample<low_band_range[0]]=0
     perc_non_zero = len(np.nonzero(stack_sample)[0])/np.prod(stack_sample.shape)
@@ -83,6 +85,12 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     
     el /= el.max()
     
+    low_band_range = [round(p,3) for p in np.percentile(el, [95, 99, 80])]
+    log("using low band range for 3d data from 95,99, 50 data percentile {}".format(low_band_range))
+    
+    if final_filter == -1:
+        final_filter = low_band_range[1]
+        log("using final filter from percentile low band range {}".format(final_filter))                              
     shine = len(np.nonzero(el[el>final_filter])[0])
     #reduce shine
     log("checking shine @ {0:.2f}".format(shine))
@@ -142,7 +150,8 @@ def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_th
     if cut_with_low_pass: 
         stack = low_pass_2d_proj_root_segmentation(stack, out=out)
         log("clipped root, offset at {}".format(out))
-    stack = sharpen(stack, iterations=sharpen_iter)
+    sig = 4 #if we are using 3d mode 8 works better
+    stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
     overlay = stack.sum(axis=0)
     stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
     centroids = blob_centroids(stack, underlying_image=stack,display=display_detections)
@@ -151,7 +160,7 @@ def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_th
     
     return centroids,overlay # return the best overlay item and the centroids
 
-def sharpen(sample,exageration=1000,sig=8, iterations=1):
+def sharpen(sample,exageration=1000,sig=4, iterations=1):
     for i in range(iterations):    
         partial= ndimage.gaussian_laplace(sample,sigma=sig)
         partial /= partial.max()
@@ -241,8 +250,9 @@ def blob_centroids(blobs,
             centroids.append(p2.coords)
         
         if not found:##ading the big one because we found nothing - although, i need to condition - if the area is not rediculous
-            #("adding big region because no little region found")
-            centroids.append(p.coords)
+            if p.volume > min_final_volume and p.TwoDProps.eccentricity < max_final_ecc:
+                log("adding big region because no little region found - note the vol of this item is {} and its ecc is {}".format(p.volume, p.TwoDProps.eccentricity))
+                centroids.append(p.coords)
         
     log("Found {} centroids".format(len(centroids)))
             
