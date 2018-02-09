@@ -144,7 +144,7 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     
     return el
 
-def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False):
+def detect(stack,cut_with_low_pass=True,sharpen_iter=2, isolate_iter=1,  isol_threshold=0.125, display_detections=False):
     """high level function to carry out a detection recipe"""
     out = []
     if cut_with_low_pass: 
