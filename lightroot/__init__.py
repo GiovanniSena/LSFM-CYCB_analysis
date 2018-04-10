@@ -92,7 +92,7 @@ def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", 
         
         
 def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
-    save_plot_loc = "./cached_data/.png" #{:0>3}
+    save_plot_loc = "./cached_data/{:0>3}.png" #
     SETTINGS["log_to_file"] = log_to_file
     if infer_file_formats==True: 
         try:  infer_formats(folder)
