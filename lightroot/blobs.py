@@ -236,7 +236,7 @@ def blob_centroids(blobs,
     ax= None if not display else io.plotimg(markers,colour_bar=False)
 
     #do i do it here or not - i dont think so because unless a volume violation we should split
-    #markers = segment(markers)
+    markers = segment(markers)
     
     for p in _region.collection_from_markers(markers,underlying_image=underlying_image):
         if watch!= None and p.key != watch:continue
