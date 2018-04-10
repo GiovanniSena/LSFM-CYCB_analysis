@@ -123,7 +123,7 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     for i in iterator:  
         stack = io.get_stack(i)
         #comes down to iterations and thresholds after we are given a clipped frame denoised - extract good parameters for every video
-        current_blobs,stack = blobs.detect(stack, isol_threshold=0.125)
+        current_blobs,stack = blobs.detect(stack)#, isol_threshold=0.125
         current_blobs["t"] = i
         ax = io.overlay_blobs(stack,current_blobs)
 

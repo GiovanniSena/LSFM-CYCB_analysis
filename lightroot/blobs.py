@@ -161,7 +161,7 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     
     return el
 
-def detect(stack,cut_with_low_pass=True,sharpen_iter=2, isolate_iter=1,  isol_threshold=0.125, display_detections=False):
+def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False):
     """high level function to carry out a detection recipe"""
     out = []
     if cut_with_low_pass: 
@@ -171,7 +171,9 @@ def detect(stack,cut_with_low_pass=True,sharpen_iter=2, isolate_iter=1,  isol_th
     stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
     overlay = stack.sum(axis=0)
     stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
-    centroids = blob_centroids(stack, underlying_image=stack,display=display_detections)
+    #the attempt segment is more complicated and uncessary - the blob_centroids tries to segment and works reasonable well but there were twoo many variants in the data to complete
+    #peaks are a safe and easier calculation
+    centroids =peak_centroids(stack) # blob_centroids(stack, underlying_image=stack,display=display_detections,do_top_watershed=do_top_watershed)
   
     #offset correction here - move both the box and the coords
     
@@ -186,6 +188,11 @@ def sharpen(sample,exageration=1000,sig=4, iterations=1):
         sample = sample / sample.max()    
                   
     return sample
+
+def peak_centroids(im, size=10, min_distance=10):
+    image_max = maximum_filter(im, size=size, mode='constant')
+    coordinates = feature.peak_local_max(im, min_distance=min_distance)
+    return pd.DataFrame(coordinates,columns=["z", "y", "x"])
 
 def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, iterations=1):#thing about threshold - should be adaptive
     perc_non_zero = len(np.nonzero(partial)[0])/np.prod(partial.shape)
@@ -228,6 +235,7 @@ def blob_centroids(blobs,
                    underlying_image=None, 
                    min_bright=2,
                    skip_large_regions=False,
+                   do_top_watershed=False,
                    root_offset= []):
     
     """Using a hierarchical decomposition, find blobs"""
@@ -236,7 +244,7 @@ def blob_centroids(blobs,
     ax= None if not display else io.plotimg(markers,colour_bar=False)
 
     #do i do it here or not - i dont think so because unless a volume violation we should split
-    markers = segment(markers)
+    if do_top_watershed: markers = segment(markers)
     
     for p in _region.collection_from_markers(markers,underlying_image=underlying_image):
         if watch!= None and p.key != watch:continue
