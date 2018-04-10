@@ -27,6 +27,8 @@ def get_max_int(i, formatof=None, norm=True):
   
     return im
 
+#todo add a generic image reader - simply wraps skimage
+
 def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
     """Having set a folder template, load the 3d stack frame by index from that folder"""
     SETTINGS["current_frame_index"] = i
@@ -69,6 +71,26 @@ def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
             "95_99Percentiles" : np.percentile(stack_sample, [95, 99])
             }
 
+def show_xy_intensity(in_tile,i=None):
+    #todo make this do xy and contour 
+    plt.figure(figsize=(10,6))
+    
+    tile = in_tile if len(in_tile.shape) == 2 else in_tile.sum(axis=0)
+    
+    X = tile.sum(axis=0)
+    X /= X.max()
+    Y = tile.sum(axis=1)
+    Y /= Y.max()
+    plt.plot(X)
+    plt.plot(Y)
+    if i != None:
+        save_plot_loc = "./sample_data/{:0>3}.png"
+        plt.savefig(save_plot_loc.format(i))
+        plt.close()
+        
+#add gradient display
+#slab = stack.sum(0)
+#grad = np.gradient(slab)[0]
 
 def plotimg(im,default_slice=None,show_intensity=False,colour_bar=False):
     """Plot the image. If 3D plot the projection onto 3d by sunmming on axis 0"""
@@ -92,6 +114,18 @@ def overlay_blobs(image, blobs):
     ax = plotimg(image)
     plt.scatter(x=blobs.x, y=blobs.y, c='white', s=30)
     
+def plot_3d(image_in):
+    from mpl_toolkits.mplot3d import Axes3D
+    image = image_in if len(image_in.shape) <= 2 else image_in.sum(axis=0)       
+    X = np.arange(0, image.shape[1], 1)
+    Y = np.arange(0, image.shape[0], 1)
+    X, Y = np.meshgrid(X, Y)
+    Z = image
+    fig = plt.figure(figsize=(20,10))
+    ax = fig.gca(projection='3d')
+    ax.set_axis_off()
+    surf = ax.plot_surface(X, Y, Z, rstride=1, cstride=1, cmap='hot', linewidth=0, antialiased=False)
+
 def plot_blobs_at_t(df,t):
     maxin_sample = get_max_int(t)
     if maxin_sample == None: maxin_sample = get_stack(t)
@@ -99,7 +133,7 @@ def plot_blobs_at_t(df,t):
     ax = plotimg(maxin_sample)
     plt.scatter(x=blobs.x, y=blobs.y, c='g', s=30)
 
-def tile(s,x,y,divs=4):
+def tile(s,x,y,divs=4,display=False):
     if x >= divs or y >= divs: raise Exception("out of range on tile request")
     if len(s.shape) > 2: s = s.sum(axis=0)
     L = (np.array(s.shape)/divs).astype(int)
@@ -107,9 +141,27 @@ def tile(s,x,y,divs=4):
     y1,y2 = y*L[0],y*L[0]+L[0] 
     if x+1 == divs: x2=-1
     if y+1 == divs: y2=-1
-    return s[y1:y2,x1:x2 ]
+    t =  s[y1:y2,x1:x2 ]
+    if display: plotimg(t)
+    return t
 
-
+def tiling(data,divs=10, cmap=None):
+    f, axarr = plt.subplots(divs,divs,figsize=(15,11.5))
+    plt.axis('on')
+    for x in range(divs):
+        for y in range(divs):
+            tile1 = tile(data,x,y,divs=divs)
+            AX = axarr[y,x]
+            AX.set_xticklabels([])
+            AX.set_yticklabels([])
+            text = "({},{})".format(x,y)
+            if cmap != None: AX.imshow(tile1,cmap)  
+            else:  AX.imshow(tile1)
+            AX.text(20, 50, text, color='white', fontsize=14)
+                
+    plt.subplots_adjust(wspace=0, hspace=0)
+    
+    
 def tile_function_plot(data, func, divs=10):
     f, axarr = plt.subplots(divs,divs,figsize=(15,11.5))
     plt.axis('on')#

@@ -41,3 +41,4 @@ setup(
 #normally pip install pyfftw should work
 #i have also install some tools for PC from https://github.com/alimuldal/phasepack
 #also using tqdm
+#may use some things from https://github.com/loli/medpy

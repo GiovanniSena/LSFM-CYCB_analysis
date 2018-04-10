@@ -6,6 +6,7 @@ from skimage.measure import regionprops
 from skimage.filters import gaussian, laplace
 from scipy.ndimage import maximum_filter,gaussian_filter,label
 from scipy.ndimage.morphology import binary_erosion
+from skimage.morphology import watershed
 from skimage.filters import threshold_otsu, threshold_adaptive,threshold_li
 from skimage import io
 from skimage import data, feature
@@ -31,6 +32,22 @@ DEFAULT_BASE_THRESHOLD = 0.2
 DEFAULT_THINNING_THRESHOLD = 0.3
 #LOW_BAND_RANGE = [0.05,0.085]
 
+def fft2d_lowpass_and_back(img, win=15):
+    f = np.fft.fft2(img)
+    # shift the center
+    fshift = np.fft.fftshift(f)
+    rows, cols = img.shape
+    crow,ccol = int(rows/2) , int(cols/2)
+    # remove the low frequencies by masking with a rectangular window of size 60x60
+    # High Pass Filter (HPF)
+    fshift[crow-win:crow+win, ccol-win:ccol+win] = 0
+    # shift back (we shifted the center before)
+    f_ishift = np.fft.ifftshift(fshift)
+    # inverse fft to get the image back 
+    img_back = np.fft.ifft2(f_ishift)
+    img_back = np.abs(img_back)
+    
+    
 def crop_by_region(data, region):
     """Given a region e.g something from a set of label, mask data using the index determined by the region"""
     if data is None: return None
@@ -192,11 +209,15 @@ def erode(im,count=3):
     for i in range(count):   im = erosion(im)
     return im / im.max()
 
-def weight_by_distance_transform(img,param=22.5):
-    data =  ndimage.distance_transform_edt(img)
-    data = data + (22.5 * img) # blob intensity is more important
-    data = data / data.max()
-    return data
+def segment(image, threshold=0.7):
+    sharp = image.copy()
+    sharp[sharp<threshold] = 0
+    sharp[sharp>0] = 1
+    distance = ndimage.distance_transform_edt(image)
+    local_maxi = feature.peak_local_max(  distance, indices=False, footprint=np.ones((10,10,10)), labels=image)
+    markers = ndimage.label(local_maxi)[0]
+    labels = watershed(-distance, markers, mask=image)
+    return labels
 
 def blob_centroids(blobs, 
                    display=False,
@@ -214,6 +235,9 @@ def blob_centroids(blobs,
     centroids = []
     ax= None if not display else io.plotimg(markers,colour_bar=False)
 
+    #do i do it here or not - i dont think so because unless a volume violation we should split
+    #markers = segment(markers)
+    
     for p in _region.collection_from_markers(markers,underlying_image=underlying_image):
         if watch!= None and p.key != watch:continue
         if display: p.show(ax)
@@ -221,7 +245,8 @@ def blob_centroids(blobs,
         if p.volume > 200000 and skip_large_regions:
             log("skipping excessive volume blob range - volume is {}".format(p.volume))
             continue
-        data = weight_by_distance_transform(p.image) if dt else p.image
+        #data = weight_by_distance_transform(p.image) if dt else p.image
+        data = p.image
         blobs = dog_blob_detect(data,sigma_range=DEFAULT_RANGE,threshold=DEFAULT_LOCAL_THRESHOLD)
         sub_markers = label(blobs)[0]  
         
@@ -239,6 +264,10 @@ def blob_centroids(blobs,
             continue
             
         found = False
+        
+        #if doing watershed - we can split things out a bit
+        #sub_markers = segment(sub_markers)
+        
         #now we are checking for eccentricity etc.
         for ct, p2 in enumerate(_region.collection_from_markers(sub_markers, p,
                                                   having_min_vol =min_final_volume, 
