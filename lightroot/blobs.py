@@ -161,22 +161,34 @@ def low_pass_root_segmentation(stack, retain_size=False, low_band_range = None, 
     
     return el
 
-def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False):
+def transform_centroids(centroids, bbox):
+    log("Transform back to original ref frame using clipped bounding blox", bbox)
+    centroids["y"] += bbox[0][0]
+    centroids["x"] += bbox[0][1]
+    
+    return centroids
+
+def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
     """high level function to carry out a detection recipe"""
-    out = []
+    #out = []
     if cut_with_low_pass: 
         stack = low_pass_2d_proj_root_segmentation(stack, out=out)
         log("clipped root, offset at {}".format(out))
     sig = 4 #if we are using 3d mode 8 works better
     stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
-    overlay = stack.sum(axis=0)
+    overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
+    
     stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
     #the attempt segment is more complicated and uncessary - the blob_centroids tries to segment and works reasonable well but there were twoo many variants in the data to complete
     #peaks are a safe and easier calculation
     centroids =peak_centroids(stack) # blob_centroids(stack, underlying_image=stack,display=display_detections,do_top_watershed=do_top_watershed)
-  
-    #offset correction here - move both the box and the coords
     
+    #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
+    if overlay_original_id != None:  
+        #in this mode i am going to mark the square on the overloy
+        #io.draw_bounding_box(overlay,out)
+        centroids = transform_centroids(centroids, out)
+  
     return centroids,overlay # return the best overlay item and the centroids
 
 def sharpen(sample,exageration=1000,sig=4, iterations=1):

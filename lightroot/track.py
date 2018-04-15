@@ -39,7 +39,10 @@ def rank_disp(b1,b2,d, return_pairing=False, epsilon=15):#epsilon should not be 
     if not return_pairing: return score
     b1["next"] = ids
     b1["epsilon"] = ar
-    return b2.join(b1.set_index("next"),rsuffix="prev")[["key", "x", "y", "z","t", "epsilon"]], score
+    
+    b2 = b2.join(b1.set_index("next"),rsuffix="prev")
+    cols = [c for c in ["key", "x", "y", "z","t", "epsilon", "ffill"] if c in b2]
+    return b2[cols], score
     #return b1.reset_index().set_index("next").join(b2,lsuffix="prev_", how='outer'), score
 
 def continue_index(s,seed):

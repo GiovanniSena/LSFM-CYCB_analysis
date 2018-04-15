@@ -56,11 +56,18 @@ from . import lineage
 ###Primary
 #################
 
-def determine_file_count(format_path, nmax_files=100000):
+def determine_file_count(format_path, nmax_files=100000, max_skip=50):
     import os
+    missing = 0
+    last_good = 0
     for i in range(nmax_files):
         if not os.path.isfile(format_path.format(i)):
-            return i
+            missing+=1
+            if missing  >= max_skip: return last_good
+        else:
+            missing = 0#contiguous we care about
+            last_good = i
+    return last_good
         
 def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", token="_tp"):
     try:
@@ -80,8 +87,13 @@ def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", 
         SETTINGS["stack_files"] = stack_f
         SETTINGS["maxint_files"] = maxint_f
 
-        if not os.path.isfile(stack_f.format(0)):
-            raise Exception("The format does not work - cannot find a file matching "+stack_f.format(0))
+        found_good = -1
+        for i in range(50):#50 is the max gap value
+            if os.path.isfile(stack_f.format(i)):
+                found_good = i
+                break
+        
+        if found_good == -1: raise Exception("The format does not work - cannot find a file matching "+stack_f.format(found_good))
         return stack_f, maxint_f
              
     except Exception as ex:
@@ -92,6 +104,7 @@ def infer_formats(path_to_exp = "C:/Users/mrsir/Box Sync/uncut/images/310717/", 
         
         
 def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
+    
     save_plot_loc = "./cached_data/{:0>3}.png" #
     SETTINGS["log_to_file"] = log_to_file
     if infer_file_formats==True: 
@@ -115,19 +128,31 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     io.log("processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
 
     tracks = []
+    out = []
     blobs_last = None
     known_key = None
+    stack,current_blobs = None,None
+        
     iterator = [i for i in range(count)]
     if using_tqdm: iterator =tqdm.tqdm(iterator) 
-        
-    for i in iterator:  
-        stack = io.get_stack(i)
-        #comes down to iterations and thresholds after we are given a clipped frame denoised - extract good parameters for every video
-        current_blobs,stack = blobs.detect(stack)#, isol_threshold=0.125
+    loaded_frames = -1
+    for i in iterator:
+         #if we captures this we can use the bounding box in the detection and use that in the overlay
+        try:
+            stack = io.get_stack(i)
+            current_blobs,stack = blobs.detect(stack,sharpen_iter=1,overlay_original_id=i,out=out)#, isol_threshold=0.125
+            loaded_frames+=1
+        except:
+            if stack is None: #if we have never seen a good stack, we can not do much
+                io.log("waiting for first good frame...", mtype="WARN")
+                continue
+            io.log("failed to load next stack - filling forward",mtype="WARN")
+            #if we have a good frame from before, we are going to just pretend that was our last but tell the user
+            current_blobs["ffill"] = True
         current_blobs["t"] = i
-        ax = io.overlay_blobs(stack,current_blobs)
+        ax = io.overlay_blobs(stack,current_blobs,out)#<-use ffil to leave a message
 
-        if i==0:
+        if loaded_frames==0: #was i==0 check but maybe the first one is not the one
             current_blobs["key"] = current_blobs.index
             blobs_last = current_blobs
             known_key = current_blobs.key.max()

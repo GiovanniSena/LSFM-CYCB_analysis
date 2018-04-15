@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
-from skimage import io
+import matplotlib.patches as patches
+from skimage import io,draw
 from . import SETTINGS
 #get fill loc default from sessions for format strings
 import time
@@ -18,16 +19,6 @@ def log(message,index="", mtype="INFO"):
             f.write(record+"\n");
     else:  print(record)
     
-def get_max_int(i, formatof=None, norm=True):
-    """Having set a folder template, load the max intensity frame by index from that folder"""
-    #todo - if there are no max int files make them using the stack or return none
-    if formatof == None: formatof = SETTINGS["maxint_files"]
-    file = formatof.format(i)
-    im = io.imread(file)#[300:900,:]
-  
-    return im
-
-#todo add a generic image reader - simply wraps skimage
 
 def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
     """Having set a folder template, load the 3d stack frame by index from that folder"""
@@ -44,6 +35,19 @@ def get_stack(i, formatof=None,norm=True,convert_and_clip=True):
         
     return im
 
+def get_max_int(i, formatof=None, norm=True):
+    """Having set a folder template, load the max intensity frame by index from that folder"""
+    #todo - if there are no max int files make them using the stack or return none
+    if formatof == None: formatof = SETTINGS["maxint_files"]
+    file = formatof.format(i)
+    try:
+        im = io.imread(file)#[300:900,:]
+        return im
+    except:
+        log("failed to find max intensity data forframe {} - using 3d-stack-sum instead".format(i), mtype="WARN")
+        return get_stack(i).sum(0)
+        
+#todo add a generic image reader - simply wraps skimage
 
 def stats(im,ylim=(0,500000), xlim=(0.05,0.8),normed_hist=True):
     """Dump out some statistics for the image"""
@@ -108,10 +112,30 @@ def plotimg(im,default_slice=None,show_intensity=False,colour_bar=False):
     #if colour_bar:fig.colorbar(ax)
     return ax
     
+def draw_bounding_box(image, bbox_coords_2d):
+    r0 = bbox_coords_2d[0][0]
+    c0 = bbox_coords_2d[0][1]
+    r1 = bbox_coords_2d[0][2]
+    c1 = bbox_coords_2d[0][3]
+    border = 0
+    rr,cc = draw.polygon_perimeter([r1+border, r0-border, r0-border, r1+border], 
+                                   [c0-border, c0-border, c1+border, c1+border], 
+                                   shape=image.shape, clip=False)
+    image[rr, cc] = 200
     
-def overlay_blobs(image, blobs):
+def __has_ffill__(df):
+    if "ffill" in df: return df["ffill"].astype(int).max() == 1
+    return False
+    
+def overlay_blobs(image, blobs, rect=None):
     """scatter blobs from a dataframe t,x,y,z over the image"""
     ax = plotimg(image)
+    
+    if __has_ffill__(blobs): ax.text(30, 30, 'Raw Frame Missing Here! Using last good one',color='red', fontsize=15)
+
+    if rect != None: 
+        ax.add_patch( patches.Rectangle(  list(reversed(rect[0][0:2])),   rect[0][3]-rect[0][1],   rect[0][2]-rect[0][0],  fill=False, edgecolor='white' ))
+    
     plt.scatter(x=blobs.x, y=blobs.y, c='white', s=30)
     
 def plot_3d(image_in):
