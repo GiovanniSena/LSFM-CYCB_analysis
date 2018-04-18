@@ -127,22 +127,26 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
     count = limit_count if limit_count != None else determine_file_count(SETTINGS["stack_files"])
     io.log("processing {} files in directory {}".format(count, SETTINGS["stack_files"]))
 
+    #loop state variables
     tracks = []
-    out = []
+    old_out = []
     blobs_last = None
     known_key = None
     stack,current_blobs = None,None
+    loaded_frames = -1
         
     iterator = [i for i in range(count)]
     if using_tqdm: iterator =tqdm.tqdm(iterator) 
-    loaded_frames = -1
+    
     for i in iterator:
-         #if we captures this we can use the bounding box in the detection and use that in the overlay
+        out = []#
         try:
             stack = io.get_stack(i)
             current_blobs,stack = blobs.detect(stack,sharpen_iter=1,overlay_original_id=i,out=out)#, isol_threshold=0.125
             loaded_frames+=1
+            old_out = list(out)#copy the state of overlay
         except:
+            out = list(old_out)#i copy this because we need to use something for the overlay
             if stack is None: #if we have never seen a good stack, we can not do much
                 io.log("waiting for first good frame...", mtype="WARN")
                 continue
