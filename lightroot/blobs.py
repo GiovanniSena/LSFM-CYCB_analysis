@@ -221,13 +221,15 @@ def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1):
     blobs_centroids =peak_centroids(g2)   
     return g2, blobs_centroids
 
-def detect(stack,cut_with_low_pass=True,find_threshold_val=0.2,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
     """high level function to carry out a detection recipe"""
     #out = []
     if cut_with_low_pass: 
         stack = low_pass_2d_proj_root_segmentation(stack, find_threshold_val=find_threshold_val, out=out)
         log("clipped root, offset at {}".format(out))
     overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
+    
+    stack = sharpen(stack) #check the role of sharpen, might give us extra leeway to reduce the threshold and then sharpen back up - but make sure not to do both. Here i assume find thresho,d os say, 0.1
     stack, centroids =simple_detector(stack)
     #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
     if overlay_original_id != None:  
