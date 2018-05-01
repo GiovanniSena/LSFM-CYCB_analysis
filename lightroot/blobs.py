@@ -221,7 +221,7 @@ def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1):
     blobs_centroids =peak_centroids(g2)   
     return g2, blobs_centroids
 
-def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+def detect(stack,cut_with_low_pass=True,find_threshold_val=0.2,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
     """high level function to carry out a detection recipe"""
     #out = []
     if cut_with_low_pass: 
