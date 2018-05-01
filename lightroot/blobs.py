@@ -1,6 +1,8 @@
 #trying to keep track of important params
 # blob sigma range of 8 and 10 seems good for the cells we see
-#the find_threshold threshold of 0.05 seems best ot pass through the detect wrapper
+#the find_threshold threshold of 0.08 seems best ot pass through the detect wrapper -  i need it to be as high as possible without admitting junk e.g. 198 on the april cut 
+# actually - it depends on uncertainity i.e. clipping region size. If we are clipping properly, it is probably good info. otherwise, SNR is bad and we sould sub out the bottom agressively
+#peak local max should use a size of 10 and a min distance of 5
 
 import pandas as pd
 #from PIL import ImageDraw,Image as PILI
@@ -108,6 +110,7 @@ def filter_isolated_cells(array, struct=np.ones((3,3,3)),min_size=500):
 
 def find_threshold(im, gap=0.1,threshold=0.005):
     im = im.copy()
+    #im /= im.sum()
     im /= im.max()
     cuts = np.arange(0.1,1.0,gap)
     vals = np.array([np.count_nonzero(im[im>t]) for t in cuts],dtype=np.float)
@@ -124,7 +127,7 @@ def find_threshold(im, gap=0.1,threshold=0.005):
     return cuts[-1]
         
 
-def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.001, remove_specks_below=500):
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, remove_specks_below=500):
     """Runs a composite recipe for isolating and clipping a root region"""
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
     stack_sample /= stack_sample.max()
@@ -149,6 +152,11 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     log("checking shine @ {0:.2f}".format(shine))
     if shine > 25000:#considered to be too bright - purely heuristic for now
         log("bright frame detected. removing bottom agressively", mtype="WARN")
+        
+        if np.prod(el.shape) > 50000000:
+            log("because clipping was not terribly successfull, I will reduce the threshold value to the low value of 0.08", mtype="WARN")
+            find_threshold_val = 0.08
+            
         th = find_threshold(el,threshold = find_threshold_val)
         log("applying adaptive cut threshold @ {0:.2f}".format(th))
         el[el<th] = 0
@@ -206,14 +214,14 @@ def transform_centroids(centroids, bbox):
     
     return centroids
 
-def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1,size=10):
+def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1):
     g2 = gaussian_filter(g2,sigma=sigma_range[0]) - gaussian_filter(g2,sigma=sigma_range[1])
     g2 /= g2.sum() #sunm numnber for 3d contribution
     g2[g2<bottom_threshold] = 0
-    blobs_centroids =peak_centroids(g2, size=size)   
+    blobs_centroids =peak_centroids(g2)   
     return g2, blobs_centroids
 
-def detect(stack,cut_with_low_pass=True,find_threshold_val=0.05,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
     """high level function to carry out a detection recipe"""
     #out = []
     if cut_with_low_pass: 
@@ -233,7 +241,7 @@ def detect_last_one(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,
     #out = []
     if cut_with_low_pass: 
         stack = low_pass_2d_proj_root_segmentation(stack, out=out)
-        log("clipped root, offset at {}".format(out))
+        log("clipped root, offset at {} volume is {}".format(out))
     
     sig = 4 #if we are using 3d mode 8 works better
     stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
@@ -265,14 +273,7 @@ def sharpen(sample,exageration=1000,sig=4, iterations=1):
 def peak_centroids(im, size=10, min_distance=5):
     image_max = maximum_filter(im, size=size, mode='constant')
     coordinates = feature.peak_local_max(im, min_distance=min_distance)
-    
-    #id_regions, num_ids = ndimage.label(image_max, structure=np.ones((3,3,3)))
-    ##id_sizes = np.array(ndimage.sum(array, id_regions, range(num_ids + 1)))
-    #if len(id_regions) > len(coordinates):  log("suspect: the number of peaks is less than the number of objects: {}<{}".format(len(coordinates),len(id_regions)))
-    
     df =  pd.DataFrame(coordinates,columns=["z", "y", "x"])
-
-
     return df
 
 def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, iterations=1):#thing about threshold - should be adaptive
