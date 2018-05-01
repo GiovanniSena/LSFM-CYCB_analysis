@@ -157,12 +157,11 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
         return el
     
     if shine > 25000:#considered to be too bright - purely heuristic for now
-        log("bright frame detected. removing bottom agressively", mtype="WARN")
-        
+        #log("bright frame detected. removing bottom agressively", mtype="WARN")
         if np.prod(el.shape) > 50000000:
             log("because clipping was not terribly successfull, I will reduce the threshold value to the low value of 0.08", mtype="WARN")
             find_threshold_val = 0.08
-            
+     
         th = find_threshold(el,threshold = find_threshold_val)
         log("applying adaptive cut threshold @ {0:.2f}".format(th))
         el[el<th] = 0
@@ -220,10 +219,11 @@ def transform_centroids(centroids, bbox):
     
     return centroids
 
-def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1):
+def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1,min_size=1000):
     g2 = gaussian_filter(g2,sigma=sigma_range[0]) - gaussian_filter(g2,sigma=sigma_range[1])
-    g2 /= g2.sum() #sunm numnber for 3d contribution
+    g2 /= g2.max() #sunm numnber for 3d contribution
     g2[g2<bottom_threshold] = 0
+    g2,size = filter_isolated_cells(g2,min_size=min_size)
     blobs_centroids =peak_centroids(g2)   
     return g2, blobs_centroids
 
