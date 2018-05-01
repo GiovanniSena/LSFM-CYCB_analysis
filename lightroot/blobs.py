@@ -37,6 +37,7 @@ DEFAULT_RANGE=[1,2]
 DEFAULT_LOCAL_THRESHOLD = 0.5
 DEFAULT_BASE_THRESHOLD = 0.2
 DEFAULT_THINNING_THRESHOLD = 0.3
+DEFAULT_MAX_CELLS_ALLOWED = 100
 #LOW_BAND_RANGE = [0.05,0.085]
 
 def fft2d_lowpass_and_back(img, win=15):
@@ -236,7 +237,13 @@ def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=
     overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
     
     #stack = sharpen(stack) #check the role of sharpen, might give us extra leeway to reduce the threshold and then sharpen back up - but make sure not to do both. Here i assume find thresho,d os say, 0.1
-    stack, centroids =simple_detector(stack)
+    stack, centroids = simple_detector(stack)
+    
+    log("detected {} centroids".format(len(centroids)))
+    if len(centroids) > DEFAULT_MAX_CELLS_ALLOWED: 
+        log("The number of cells {} exceeds the maximum {}. These will all be ignored".format(len(centroids),DEFAULT_MAX_CELLS_ALLOWED), mtype="WARN")
+        centroids = centroids.iloc[0:0]
+
     #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
     if overlay_original_id != None:  
         #in this mode i am going to mark the square on the overloy
