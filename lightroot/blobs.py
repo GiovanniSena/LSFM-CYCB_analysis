@@ -1,3 +1,7 @@
+#trying to keep track of important params
+# blob sigma range of 8 and 10 seems good for the cells we see
+#the find_threshold threshold of 0.05 seems best ot pass through the detect wrapper
+
 import pandas as pd
 #from PIL import ImageDraw,Image as PILI
 import numpy as np
@@ -14,7 +18,8 @@ from skimage.draw import circle
 from scipy import ndimage
 from . import io
 import matplotlib.patches as mpatches
-
+import warnings
+warnings.filterwarnings("ignore")
 from . io import log
 try:
     import phasepack
@@ -88,7 +93,38 @@ def extract_largest_label(stack_sample,binary,  retain_size=False, out=[], clipI
     #clip the part of the output that is fitting the bounding box
     return crop_by_region(output, PP)
 
-def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1):
+def filter_isolated_cells(array, struct=np.ones((3,3,3)),min_size=500):
+    """ Return array with completely isolated single cells removed
+    :param array: Array with completely isolated single cells
+    :param struct: Structure array for generating unique regions
+    :return: Array with minimum region size > 1
+    """
+    filtered_array = array# np.copy(array) #im not copying becase im just going for it
+    id_regions, num_ids = ndimage.label(filtered_array, structure=struct)
+    id_sizes = np.array(ndimage.sum(array, id_regions, range(num_ids + 1)))
+    area_mask = (id_sizes < min_size)
+    filtered_array[area_mask[id_regions]] = 0
+    return filtered_array,id_sizes
+
+def find_threshold(im, gap=0.1,threshold=0.005):
+    im = im.copy()
+    im /= im.max()
+    cuts = np.arange(0.1,1.0,gap)
+    vals = np.array([np.count_nonzero(im[im>t]) for t in cuts],dtype=np.float)
+    df = pd.DataFrame(vals, columns=["v"])
+    df["s"] = df["v"] / df["v"].sum()
+    df["d"] = df["s"].diff(-2).fillna(method='ffill') 
+    vals = list(df["d"].values)
+    #algorithm wait till difference is greater than 1, then less then 1
+    waiting = False
+    for i,v in enumerate(vals):
+        if v > threshold: waiting = True
+        if waiting == True and v < threshold: return cuts[i]
+    #this is very aggressive, it says if we did not find a cut point we are removing almost everything
+    return cuts[-1]
+        
+
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.001, remove_specks_below=500):
     """Runs a composite recipe for isolating and clipping a root region"""
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
     stack_sample /= stack_sample.max()
@@ -112,13 +148,15 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     #reduce shine
     log("checking shine @ {0:.2f}".format(shine))
     if shine > 25000:#considered to be too bright - purely heuristic for now
-        log("bright frame detected. removing bottom", mtype="WARN")
-        el[el<final_filter]=0 
-        el/= el.max()
+        log("bright frame detected. removing bottom agressively", mtype="WARN")
+        th = find_threshold(el,threshold = find_threshold_val)
+        log("applying adaptive cut threshold @ {0:.2f}".format(th))
+        el[el<th] = 0
+        perc_non_zero = len(np.nonzero(el)[0])/np.prod(el.shape)
+        log("extracted root region with volume {0} with non-zero {1:.2f}%".format(np.prod(el.shape),round(perc_non_zero*100, 2)))
         
-    perc_non_zero = len(np.nonzero(el)[0])/np.prod(el.shape)
-    log("extracted root region with volume {0} with non-zero {1:.2f}%".format(np.prod(el.shape),round(perc_non_zero*100, 2)))
-    
+        el,sizes = filter_isolated_cells(el, min_size=remove_specks_below)
+
     return el
     
     
@@ -168,12 +206,35 @@ def transform_centroids(centroids, bbox):
     
     return centroids
 
-def detect(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1,size=10):
+    g2 = gaussian_filter(g2,sigma=sigma_range[0]) - gaussian_filter(g2,sigma=sigma_range[1])
+    g2 /= g2.sum() #sunm numnber for 3d contribution
+    g2[g2<bottom_threshold] = 0
+    blobs_centroids =peak_centroids(g2, size=size)   
+    return g2, blobs_centroids
+
+def detect(stack,cut_with_low_pass=True,find_threshold_val=0.05,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+    """high level function to carry out a detection recipe"""
+    #out = []
+    if cut_with_low_pass: 
+        stack = low_pass_2d_proj_root_segmentation(stack, find_threshold_val=find_threshold_val, out=out)
+        log("clipped root, offset at {}".format(out))
+    overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
+    stack, centroids =simple_detector(stack)
+    #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
+    if overlay_original_id != None:  
+        #in this mode i am going to mark the square on the overloy
+        #io.draw_bounding_box(overlay,out)
+        centroids = transform_centroids(centroids, out)
+    return centroids,overlay # return the bes
+
+def detect_last_one(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
     """high level function to carry out a detection recipe"""
     #out = []
     if cut_with_low_pass: 
         stack = low_pass_2d_proj_root_segmentation(stack, out=out)
         log("clipped root, offset at {}".format(out))
+    
     sig = 4 #if we are using 3d mode 8 works better
     stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
     overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
@@ -201,10 +262,18 @@ def sharpen(sample,exageration=1000,sig=4, iterations=1):
                   
     return sample
 
-def peak_centroids(im, size=10, min_distance=10):
+def peak_centroids(im, size=10, min_distance=5):
     image_max = maximum_filter(im, size=size, mode='constant')
     coordinates = feature.peak_local_max(im, min_distance=min_distance)
-    return pd.DataFrame(coordinates,columns=["z", "y", "x"])
+    
+    #id_regions, num_ids = ndimage.label(image_max, structure=np.ones((3,3,3)))
+    ##id_sizes = np.array(ndimage.sum(array, id_regions, range(num_ids + 1)))
+    #if len(id_regions) > len(coordinates):  log("suspect: the number of peaks is less than the number of objects: {}<{}".format(len(coordinates),len(id_regions)))
+    
+    df =  pd.DataFrame(coordinates,columns=["z", "y", "x"])
+
+
+    return df
 
 def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, iterations=1):#thing about threshold - should be adaptive
     perc_non_zero = len(np.nonzero(partial)[0])/np.prod(partial.shape)

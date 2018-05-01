@@ -142,7 +142,7 @@ def process(folder,infer_file_formats=True,log_to_file=True, limit_count=None):
         out = []#
         try:
             stack = io.get_stack(i)
-            current_blobs,stack = blobs.detect(stack,sharpen_iter=1,overlay_original_id=i,out=out)#, isol_threshold=0.125
+            current_blobs,stack = blobs.detect(stack,overlay_original_id=i,out=out)#, isol_threshold=0.125
             loaded_frames+=1
             old_out = list(out)#copy the state of overlay
         except:
