@@ -150,6 +150,12 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     shine = len(np.nonzero(el[el>final_filter])[0])
     #reduce shine
     log("checking shine @ {0:.2f}".format(shine))
+    
+    if shine < 100: #this is basically degenerate
+        log("blocking degenerate frame - there are no non-zero cells after filtration".format(shine))
+        el[el>0] = 0
+        return el
+    
     if shine > 25000:#considered to be too bright - purely heuristic for now
         log("bright frame detected. removing bottom agressively", mtype="WARN")
         
@@ -229,7 +235,7 @@ def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=
         log("clipped root, offset at {}".format(out))
     overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
     
-    stack = sharpen(stack) #check the role of sharpen, might give us extra leeway to reduce the threshold and then sharpen back up - but make sure not to do both. Here i assume find thresho,d os say, 0.1
+    #stack = sharpen(stack) #check the role of sharpen, might give us extra leeway to reduce the threshold and then sharpen back up - but make sure not to do both. Here i assume find thresho,d os say, 0.1
     stack, centroids =simple_detector(stack)
     #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
     if overlay_original_id != None:  
@@ -238,29 +244,30 @@ def detect(stack,cut_with_low_pass=True,find_threshold_val=0.1,  isol_threshold=
         centroids = transform_centroids(centroids, out)
     return centroids,overlay # return the bes
 
-def detect_last_one(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
-    """high level function to carry out a detection recipe"""
-    #out = []
-    if cut_with_low_pass: 
-        stack = low_pass_2d_proj_root_segmentation(stack, out=out)
-        log("clipped root, offset at {} volume is {}".format(out))
-    
-    sig = 4 #if we are using 3d mode 8 works better
-    stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
-    overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
-    
-    stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
-    #the attempt segment is more complicated and uncessary - the blob_centroids tries to segment and works reasonable well but there were twoo many variants in the data to complete
-    #peaks are a safe and easier calculation
-    centroids =peak_centroids(stack) # blob_centroids(stack, underlying_image=stack,display=display_detections,do_top_watershed=do_top_watershed)
-    
-    #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
-    if overlay_original_id != None:  
-        #in this mode i am going to mark the square on the overloy
-        #io.draw_bounding_box(overlay,out)
-        centroids = transform_centroids(centroids, out)
-  
-    return centroids,overlay # return the best overlay item and the centroids
+#def detect_last_one(stack,cut_with_low_pass=True,sharpen_iter=1, isolate_iter=1,  isol_threshold=0.125, display_detections=False,do_top_watershed=False,overlay_original_id=None,out=[]):
+#    """high level function to carry out a detection recipe"""
+#    #out = []
+#    if cut_with_low_pass: 
+#        stack = low_pass_2d_proj_root_segmentation(stack, out=out)
+#        log("clipped root, offset at {} volume is {}".format(out))
+#    
+#    sig = 4 #if we are using 3d mode 8 works better
+#    stack = sharpen(stack, sig = sig, iterations=sharpen_iter)
+#    overlay = stack.sum(axis=0) if overlay_original_id ==None else io.get_max_int(overlay_original_id)
+#    
+##    stack = isolate(stack, iterations=isolate_iter, threshold=isol_threshold)
+#   #the attempt segment is more complicated and uncessary - the blob_centroids tries to segment and works reasonable well but there were twoo many variants in the data to complete
+#    #peaks are a safe and easier calculation
+#    centroids =peak_centroids(stack) # blob_centroids(stack, underlying_image=stack,display=display_detections,do_top_watershed=do_top_watershed)
+#    
+#    #if earlier in the process we have clipped and we want to pot on original, now we need to transform back 
+#    if overlay_original_id != None:  
+#        #in this mode i am going to mark the square on the overloy
+#        #io.draw_bounding_box(overlay,out)
+#        centroids = transform_centroids(centroids, out)
+#  
+#    return centroids,overlay # return the best overlay item and the centroids
+
 
 def sharpen(sample,exageration=1000,sig=4, iterations=1):
     for i in range(iterations):    
