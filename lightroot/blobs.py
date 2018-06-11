@@ -2,7 +2,7 @@
 # blob sigma range of 8 and 10 seems good for the cells we see
 #the find_threshold threshold of 0.08 seems best ot pass through the detect wrapper -  i need it to be as high as possible without admitting junk e.g. 198 on the april cut 
 # actually - it depends on uncertainity i.e. clipping region size. If we are clipping properly, it is probably good info. otherwise, SNR is bad and we sould sub out the bottom agressively
-#peak local max should use a size of 10 and a min distance of 5
+#peak local max should use a size of 10 and a min of 5
 
 import pandas as pd
 #from PIL import ImageDraw,Image as PILI
@@ -28,6 +28,19 @@ try:
 except:
     log("Could not load phasepack which is required for some features. Check that it is installed", mtype="WARN")
     pass
+
+from skimage.restoration import (denoise_wavelet, estimate_sigma)
+from skimage import data, img_as_float
+from skimage.util import random_noise
+from skimage.measure import compare_psnr
+
+def denoise(stack,above=0.01):
+    sigma_est = estimate_sigma(stack, multichannel=False, average_sigmas=True)
+    log("estimated gaussian noise standard deviation = {}".format(sigma_est))
+    if sigma_est> above:
+        log("estimated standard deviation of {} exceeds {} so we need to denoise. takes a moment...".format(sigma_est, above))
+        return denoise_wavelet(stack, multichannel=False,  mode='soft')
+    return stack
 
 #import warnings
 #warnings.filterwarnings('ignore')
@@ -126,10 +139,39 @@ def find_threshold(im, gap=0.1,threshold=0.005):
         if waiting == True and v < threshold: return cuts[i]
     #this is very aggressive, it says if we did not find a cut point we are removing almost everything
     return cuts[-1]
+       
+def label_distribution(img):
+    l = label(img.sum(0))[0]
+    for r in regionprops(l):
+        if r.perimeter != 0:yield r.perimeter
+    
+    
+def find_level_and_dtrans(stack,min_perim=1000,max_perim=2000,mask_threshold=0.1):
+    waiting=False
+    
+    for t in np.arange(0.01,0.3, 0.01):
+        g2 = stack.copy()
+        g2 /= g2.max()
+        g2[g2<t]=0
+        props = np.array(list(label_distribution(g2)))
+        m = props.max()
+        #print(m)
+        if m > max_perim and not waiting: waiting=True
+        if waiting and m < min_perim: 
+            log("setting the clipped region adaptive threshold to {0:.2f} based on maximum label perimeters".format(t))
+            g2 /=g2.max()
+            mask = g2.copy()
+            mask[mask<mask_threshold] = 0
+            mask[mask>0] = 1
+            #i could use just the distance transform i could weight with it
+            return  ndimage.distance_transform_edt(g2) #* g2
         
+    log("did not find a clipped region adaptive threshold based on maximum label perimeters - returning image as is")
+    return stack
 
-def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, remove_specks_below=500):
-    """Runs a composite recipe for isolating and clipping a root region"""
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, remove_specks_below=500,return_early=True,denoise_img=True):
+    """Runs a composite recipe for isolating and clipping a root region"""     
+    stack = denoise(stack) #denoise stack sampe
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
     stack_sample /= stack_sample.max()
     low_band_range = [round(p,3) for p in np.percentile(stack_sample, [95, 99, 50])]
@@ -141,6 +183,11 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     el = extract_largest_label(stack, stack_sample > 0.01,clipIn2d=True,out=out)
     
     el /= el.max()
+    
+    #doesnt make sense to denoise twice 
+    #if denoise_img: el = denoise(el)
+    
+    if return_early: return find_level_and_dtrans(el)
     
     low_band_range = [round(p,3) for p in np.percentile(el, [95, 99, 80])]
     log("using low band range for 3d data from 95,99, 50 data percentile {}".format(low_band_range))
@@ -222,7 +269,7 @@ def transform_centroids(centroids, bbox):
 
 def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1,min_size=1000):
     g2 = gaussian_filter(g2,sigma=sigma_range[0]) - gaussian_filter(g2,sigma=sigma_range[1])
-    g2 /= g2.max() #sunm numnber for 3d contribution
+    g2 /= g2.max()
     g2[g2<bottom_threshold] = 0
     g2,size = filter_isolated_cells(g2,min_size=min_size)
     blobs_centroids =peak_centroids(g2)   
