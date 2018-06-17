@@ -34,13 +34,16 @@ from skimage import data, img_as_float
 from skimage.util import random_noise
 from skimage.measure import compare_psnr
 
+NOISE_UPPER = 0.055
+
 def denoise(stack,above=0.01):
     sigma_est = estimate_sigma(stack, multichannel=False, average_sigmas=True)
+   
     log("estimated gaussian noise standard deviation = {}".format(sigma_est))
-    if sigma_est> above:
+    if sigma_est> above and sigma_est < NOISE_UPPER: #no point denoising if its too noisy perhaps??
         log("estimated standard deviation of {} exceeds {} so we need to denoise. takes a moment...".format(sigma_est, above))
-        return denoise_wavelet(stack, multichannel=False,  mode='soft')
-    return stack
+        return denoise_wavelet(stack, multichannel=False,  mode='soft'),sigma_est
+    return stack, sigma_est
 
 #import warnings
 #warnings.filterwarnings('ignore')
@@ -146,10 +149,10 @@ def label_distribution(img):
         if r.perimeter != 0:yield r.perimeter
     
     
-def find_level_and_dtrans(stack,min_perim=1000,max_perim=2000,mask_threshold=0.1):
+def find_level_and_dtrans(stack,min_perim=1000,max_perim=2000,mask_threshold=0.1, tmax=0.3):
     waiting=False
     
-    for t in np.arange(0.01,0.3, 0.01):
+    for t in np.arange(0.01,tmax, 0.01):
         g2 = stack.copy()
         g2 /= g2.max()
         g2[g2<t]=0
@@ -169,12 +172,20 @@ def find_level_and_dtrans(stack,min_perim=1000,max_perim=2000,mask_threshold=0.1
     log("did not find a clipped region adaptive threshold based on maximum label perimeters - returning image as is")
     return stack
 
-def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, remove_specks_below=500,return_early=True,denoise_img=True):
+def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, 
+                                       remove_specks_below=1000,return_early=True,denoise_img=True, override_return_early_noise_thresh=NOISE_UPPER):
     """Runs a composite recipe for isolating and clipping a root region"""     
-    stack = denoise(stack) #denoise stack sampe
+    stack,noise = denoise(stack) #denoise stack sampe
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
     stack_sample /= stack_sample.max()
     low_band_range = [round(p,3) for p in np.percentile(stack_sample, [95, 99, 50])]
+    
+    if low_band_range[1] > 0.75: #this is crazy birhgt e.g. uncut 098..103
+        stack_sample[stack_sample<0.5] = 0
+        log("seems to be way too much light - these points cannot be trusted - change early return threshold")
+        override_return_early_noise_thresh = 0
+        
+    
     log("using low band range for 2d data from 95,99, 50 data percentile {}".format(low_band_range))
     stack_sample[stack_sample>low_band_range[1]]=low_band_range[1]
     stack_sample[stack_sample<low_band_range[0]]=0
@@ -187,7 +198,10 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
     #doesnt make sense to denoise twice 
     #if denoise_img: el = denoise(el)
     
-    if return_early: return find_level_and_dtrans(el)
+    el = find_level_and_dtrans(el)
+    
+    if return_early and not noise > override_return_early_noise_thresh: #sometimes we are so noisy we want to subtract the bottom out of it -so dont return
+        return el
     
     low_band_range = [round(p,3) for p in np.percentile(el, [95, 99, 80])]
     log("using low band range for 3d data from 95,99, 50 data percentile {}".format(low_band_range))
@@ -204,13 +218,18 @@ def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range 
         el[el>0] = 0
         return el
     
-    if shine > 25000:#considered to be too bright - purely heuristic for now
+    if shine > 0:#now it is purely noise dependent
         #log("bright frame detected. removing bottom agressively", mtype="WARN")
         if np.prod(el.shape) > 50000000:
             log("because clipping was not terribly successfull, I will reduce the threshold value to the low value of 0.08", mtype="WARN")
             find_threshold_val = 0.08
      
         th = find_threshold(el,threshold = find_threshold_val)
+        
+        if final_filter > th:
+            log("switching adaptive threshold for final threshold as it is too small @ {0:.2f} < {1:.2f} ".format(th,final_filter ))
+            th = final_filter
+        
         log("applying adaptive cut threshold @ {0:.2f}".format(th))
         el[el<th] = 0
         perc_non_zero = len(np.nonzero(el)[0])/np.prod(el.shape)
