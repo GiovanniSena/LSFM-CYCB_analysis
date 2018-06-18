@@ -34,7 +34,7 @@ from skimage import data, img_as_float
 from skimage.util import random_noise
 from skimage.measure import compare_psnr
 
-NOISE_UPPER = 0.055
+NOISE_UPPER = 0.045
 
 def denoise(stack,above=0.01):
     sigma_est = estimate_sigma(stack, multichannel=False, average_sigmas=True)
@@ -173,7 +173,7 @@ def find_level_and_dtrans(stack,min_perim=1000,max_perim=2000,mask_threshold=0.1
     return stack
 
 def low_pass_2d_proj_root_segmentation(stack, retain_size=False, low_band_range = None, out=[], final_filter=-1, find_threshold_val=0.2, 
-                                       remove_specks_below=1000,return_early=True,denoise_img=True, override_return_early_noise_thresh=NOISE_UPPER):
+                                       remove_specks_below=500,return_early=True,denoise_img=True, override_return_early_noise_thresh=NOISE_UPPER):
     """Runs a composite recipe for isolating and clipping a root region"""     
     stack,noise = denoise(stack) #denoise stack sampe
     stack_sample = stack.sum(axis=0)#copy is importany because we are creating a mask
@@ -286,6 +286,13 @@ def transform_centroids(centroids, bbox):
     
     return centroids
 
+def peak_centroids(im, size=10, min_distance=5):
+    image_max = maximum_filter(im, size=size, mode='constant')
+    coordinates = feature.peak_local_max(im, min_distance=min_distance)
+    df =  pd.DataFrame(coordinates,columns=["z", "y", "x"])
+    return df
+
+
 def simple_detector(g2, sigma_range = [8,10], bottom_threshold=0.1,min_size=1000):
     g2 = gaussian_filter(g2,sigma=sigma_range[0]) - gaussian_filter(g2,sigma=sigma_range[1])
     g2 /= g2.max()
@@ -352,11 +359,6 @@ def sharpen(sample,exageration=1000,sig=4, iterations=1):
                   
     return sample
 
-def peak_centroids(im, size=10, min_distance=5):
-    image_max = maximum_filter(im, size=size, mode='constant')
-    coordinates = feature.peak_local_max(im, min_distance=min_distance)
-    df =  pd.DataFrame(coordinates,columns=["z", "y", "x"])
-    return df
 
 def isolate(partial,resharpen=False,sig_range=DEFAULT_RANGE, threshold=0.125, iterations=1):#thing about threshold - should be adaptive
     perc_non_zero = len(np.nonzero(partial)[0])/np.prod(partial.shape)
